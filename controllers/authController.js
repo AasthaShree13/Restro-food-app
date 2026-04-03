@@ -1,4 +1,5 @@
 const userModel = require("../models/userModel");
+const restroModel = require("../models/restroModel");
 const bcrypt = require("bcryptjs");
 const JWT = require("jsonwebtoken");
 
@@ -14,6 +15,7 @@ const registerController = async (req, res) => {
       answer,
       profile,
       userType,
+      restaurantId,
     } = req.body;
     //validation
     if (!userName || !email || !password || !phone || !answer) {
@@ -32,21 +34,45 @@ const registerController = async (req, res) => {
       });
     }
 
+    const resolvedUserType = userType || "client";
+
+    if (resolvedUserType === "vendor") {
+      if (!restaurantId) {
+        return res.status(400).send({
+          success: false,
+          message:
+            "vendors must provide restaurantId of a pre-registered restaurant",
+        });
+      }
+      const resturant = await restroModel.findById(restaurantId);
+      if (!resturant) {
+        return res.status(400).send({
+          success: false,
+          message: "restaurant not found — use an existing restaurant id",
+        });
+      }
+    }
+
     //hashing password
     var salt = bcrypt.genSaltSync(10);
     const hashedPassword = await bcrypt.hash(password, salt);
 
-    //create new user
-    const newUser = await userModel.create({
+    const userPayload = {
       userName,
       email,
       password: hashedPassword,
       phone,
       address,
       answer,
-      userType,
+      userType: resolvedUserType,
       profile,
-    });
+    };
+    if (resolvedUserType === "vendor") {
+      userPayload.restaurant = restaurantId;
+    }
+
+    //create new user
+    const newUser = await userModel.create(userPayload);
     res.status(200).send({
       success: true,
       message: "new user registered successfully",
@@ -76,7 +102,7 @@ const loginController = async (req, res) => {
     }
 
     //check user
-    const user = await userModel.findOne({ email });
+    const user = await userModel.findOne({ email }).populate("restaurant");
     if (!user) {
       return res.status(404).send({
         success: false,

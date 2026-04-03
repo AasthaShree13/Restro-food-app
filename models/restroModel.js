@@ -9,9 +9,10 @@ const restroSchema = new mongoose.Schema({
     imageUrl:{
         type:String
     },
-    foods:{
-        type:Array
-    },
+    foods:[{
+        type:mongoose.Schema.Types.ObjectId,
+        ref:"food"
+    }],
     time:{
         type:String
     },

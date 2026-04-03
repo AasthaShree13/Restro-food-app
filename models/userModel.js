@@ -29,6 +29,14 @@ const userSchema = new mongoose.Schema(
       enum: ["client", "admin", "vendor", "driver"],
       default: "client",
     },
+    //if userType is vendor, then restaurant is required
+    restaurant: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Resturant",
+      required: function () {
+        return this.userType === "vendor";
+      },
+    },
     profile: {
       type: String,
       default: "https://commons.wikimedia.org/wiki/File:Sample_User_Icon.png",

@@ -1,4 +1,6 @@
+const foodModel = require("../models/foodModel");
 const restroModel = require("../models/restroModel");
+const userModel = require("../models/userModel");
 
 const createRestroController = async (req, res) => {
   try {
@@ -120,6 +122,18 @@ const deleteRestroController = async (req, res) => {
         message: "please provide restro Id",
       });
     }
+    const restro = await restroModel.findById(restroID);
+    if (!restro) {
+      return res.status(404).send({
+        success: false,
+        message: "restro not found",
+      });
+    }
+    await userModel.deleteMany({
+      userType: "vendor",
+      restaurant: restroID,
+    });
+    await foodModel.deleteMany({ resturant: restroID });
     await restroModel.findByIdAndDelete(restroID);
 
     res.status(200).send({

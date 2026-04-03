@@ -1,5 +1,6 @@
 const foodModel = require("../models/foodModel");
 const orderModel = require("../models/orderModel");
+const restroModel = require("../models/restroModel");
 
 //create food
 const createFoodController = async (req, res) => {
@@ -13,15 +14,16 @@ const createFoodController = async (req, res) => {
       category,
       code,
       isAvailable,
-      resturant,
       rating,
       ratingCount,
     } = req.body;
 
-    if (!title || !description || !price || !resturant) {
+    const resturant = req.vendorUser.restaurant;
+
+    if (!title || !description || !price) {
       return res.status(500).send({
         success: false,
-        message: "please provide food title, description, price and resturant",
+        message: "please provide food title, description, and price",
       });
     }
 
@@ -40,6 +42,9 @@ const createFoodController = async (req, res) => {
     });
 
     await newFood.save();
+    await restroModel.findByIdAndUpdate(resturant, {
+      $addToSet: { foods: newFood._id },
+    });
     res.status(201).send({
       success: true,
       message: "new food created",
@@ -196,6 +201,12 @@ const updateFoodController = async (req, res) => {
         message: "food not found",
       });
     }
+    if (String(food.resturant) !== String(req.vendorUser.restaurant)) {
+      return res.status(403).send({
+        success: false,
+        message: "not allowed to update this food item",
+      });
+    }
     const {
       title,
       description,
@@ -205,7 +216,6 @@ const updateFoodController = async (req, res) => {
       category,
       code,
       isAvailable,
-      resturant,
       rating,
       ratingCount,
     } = req.body;
@@ -220,7 +230,6 @@ const updateFoodController = async (req, res) => {
         category,
         code,
         isAvailable,
-        resturant,
         rating,
         ratingCount,
       },
@@ -258,6 +267,15 @@ const deleteFoodController = async (req, res) => {
         message: "food not found",
       });
     }
+    if (String(food.resturant) !== String(req.vendorUser.restaurant)) {
+      return res.status(403).send({
+        success: false,
+        message: "not allowed to delete this food item",
+      });
+    }
+    await restroModel.findByIdAndUpdate(food.resturant, {
+      $pull: { foods: food._id },
+    });
     await foodModel.findByIdAndDelete(foodId);
     res.status(200).send({
       success: true,
@@ -283,11 +301,26 @@ const placeOrderController = async (req, res) => {
         message: "please provide food cart and payment method",
       });
     }
+
+    let sameResto;
     let total = 0;
-    //calculate price
-    cart.map((i) => {
-      total += i.price;
-    });
+    for (const id of cart) {
+      const f = await foodModel.findById(id);
+      if (!f) {
+        return res.status(500).send({
+          success: false,
+          message: "food not found",
+        });
+      }
+      if (sameResto && String(f.resturant) !== sameResto) {
+        return res.status(500).send({
+          success: false,
+          message: "use foods from one restaurant only",
+        });
+      }
+      sameResto = String(f.resturant);
+      total += f.price;
+    }
 
     const newOrder = new orderModel({
       foods: cart,
@@ -295,7 +328,6 @@ const placeOrderController = async (req, res) => {
       buyer: req.body.id,
       total,
     });
-
     await newOrder.save();
     res.status(200).send({
       success: true,
@@ -312,6 +344,35 @@ const placeOrderController = async (req, res) => {
   }
 };
 
+//get all orders by restro (vendor only)
+const getAllOrdersController = async (req, res) => {
+  try {
+    const restoId = req.vendorUser.restaurant;
+    const menuFoodIds = await foodModel.distinct("_id", {
+      resturant: restoId,
+    });
+    const orders = await orderModel.find({ foods: { $in: menuFoodIds } });
+    if (!orders.length) {
+      return res.status(404).send({
+        success: false,
+        message: "no orders found",
+      });
+    }
+    res.status(200).send({
+      success: true,
+      orderCount: orders.length,
+      orders,
+    });
+  } catch (error) {
+    console.log(error);
+    res.status(500).send({
+      success: false,
+      message: "error in get all orders API",
+      error,
+    });
+  }
+};
+
 //change order status
 const changeOrderStatusController = async (req, res) => {
   try {
@@ -319,14 +380,26 @@ const changeOrderStatusController = async (req, res) => {
     if (!orderId) {
       return res.status(400).send({
         success: false,
-        message: "lease provide orderId in params",
+        message: "please provide orderId in params",
       });
     }
-    const order = await orderModel.findById(orderId);
+    const order = await orderModel
+      .findById(orderId)
+      .populate({ path: "foods", select: "resturant" });
     if (!order) {
       return res.status(404).send({
         success: false,
         message: "order not found",
+      });
+    }
+    const first = order.foods[0];
+    if (
+      !first ||
+      String(first.resturant) !== String(req.vendorUser.restaurant)
+    ) {
+      return res.status(403).send({
+        success: false,
+        message: "order is not for your restaurant",
       });
     }
     const { status } = req.body;
@@ -360,5 +433,6 @@ module.exports = {
   updateFoodController,
   deleteFoodController,
   placeOrderController,
+  getAllOrdersController,
   changeOrderStatusController,
 };
