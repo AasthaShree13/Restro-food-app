@@ -158,11 +158,9 @@ npm install
 
 MONGO_URL=your_mongodb_connection_string  
 JWT_SECRET=your_secret_key  
-Port=8080
+PORT=8080
 
-⚠️ Uses process.env.Port (capital P)
-
----
+## ⚠️ Uses process.env.PORT
 
 ### 3. Run server
 
